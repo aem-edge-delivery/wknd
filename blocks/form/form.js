@@ -1,4 +1,4 @@
-import { readBlockConfig } from '../../scripts/lib-franklin.js';
+//import { readBlockConfig } from '../../scripts/lib-franklin.js';
 import { createButton, createFieldWrapper, createLabel } from './util.js';
 
 function generateUnique() {
@@ -426,7 +426,7 @@ export default async function decorate(block) {
     const form = await createForm(formLink.href, block);
     formLink.replaceWith(form);
 
-    const config = readBlockConfig(block);
-    Object.entries(config).forEach(([key, value]) => { if (value) form.dataset[key] = value; });
+  //  const config = readBlockConfig(block);
+   // Object.entries(config).forEach(([key, value]) => { if (value) form.dataset[key] = value; });
   }
 }
