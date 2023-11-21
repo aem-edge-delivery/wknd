@@ -1,24 +1,20 @@
 const cellNameRegex = /^\$?[A-Z]+\$?(\d+)$/;
 
-function visitor(nameMap, fields, bExcelFormula) {
+function visitor(nameMap, fields) {
   return function visit(n) {
     if (n.type === 'Field') {
       const name = n?.name;
+      const match = cellNameRegex.exec(name);
       let field;
-      if (bExcelFormula) {
-        const match = cellNameRegex.exec(name);
-        if (match?.[1]) {
-          field = nameMap[match[1]];
-        }
-        if (!field) {
-          // eslint-disable-next-line no-console
-          console.log(`Unknown column used in excel formula ${n.name}`);
-        } else {
-          n.name = field.name;
-          fields.add(field.id);
-        }
+      if (match?.[1]) {
+        field = nameMap[match[1]];
+      }
+      if (!field) {
+        // eslint-disable-next-line no-console
+        console.log(`Unknown column used in excel formula ${n.name}`);
       } else {
-        fields.add(name);
+        n.name = field.name;
+        fields.add(field.id);
       }
     } if (n.type === 'Function') {
       n.name = n.name.toLowerCase();
@@ -35,17 +31,15 @@ function visitor(nameMap, fields, bExcelFormula) {
   };
 }
 
-function updateCellNames(ast, rowNumberFieldMap, bExcelFormula = true) {
+function updateCellNames(ast, rowNumberFieldMap) {
   const fields = new Set();
-  const newAst = visitor(rowNumberFieldMap, fields, bExcelFormula)(ast);
+  const newAst = visitor(rowNumberFieldMap, fields)(ast);
   return [newAst, Array.from(fields)];
 }
 
 export default function transformRule({ prop, expression }, fieldToCellMap, formula) {
-  const biSExcelFormula = expression.startsWith('=');
-  const updatedExpression = biSExcelFormula ? expression.slice(1) : expression;
-  const ast = formula.compile(updatedExpression);
-  const [newAst, deps] = updateCellNames(ast, fieldToCellMap, biSExcelFormula);
+  const ast = formula.compile(expression.slice(1));
+  const [newAst, deps] = updateCellNames(ast, fieldToCellMap);
   return {
     prop,
     deps,

@@ -1,5 +1,4 @@
-//import { readBlockConfig } from '../../scripts/lib-franklin.js';
-import { createButton, createFieldWrapper, createLabel } from './util.js';
+import { readBlockConfig } from '../../scripts/lib-franklin.js';
 
 function generateUnique() {
   return new Date().valueOf() + Math.random();
@@ -16,7 +15,7 @@ const formatFns = await (async function imports() {
   return {};
 }());
 
-export function constructPayload(form) {
+function constructPayload(form) {
   const payload = { __id__: generateUnique() };
   [...form.elements].forEach((fe) => {
     if (fe.name) {
@@ -44,7 +43,7 @@ async function prepareRequest(form, transformer) {
     'Content-Type': 'application/json',
   };
   const body = JSON.stringify({ data: payload });
-  const url = form.dataset.submit;
+  const url = form.dataset.submit || form.dataset.action;
   if (typeof transformer === 'function') {
     return transformer({ headers, body, url }, form);
   }
@@ -73,13 +72,7 @@ async function submitForm(form, transformer) {
 async function handleSubmit(form, transformer) {
   if (form.getAttribute('data-submitting') !== 'true') {
     form.setAttribute('data-submitting', 'true');
-    if (form.dataset?.action) {
-      form.action = form.dataset.action;
-      form.target = form.dataset.target || '_self';
-      form.submit();
-    } else {
-      await submitForm(form, transformer);
-    }
+    await submitForm(form, transformer);
   }
 }
 
@@ -90,7 +83,7 @@ function setPlaceholder(element, fd) {
 }
 
 const constraintsDef = Object.entries({
-  'password|tel|email|text': [['Max', 'maxlength'], ['Min', 'minlength']],
+  'email|text': [['Max', 'maxlength'], ['Min', 'minlength']],
   'number|range|date': ['Max', 'Min', 'Step'],
   file: ['Accept', 'Multiple'],
   fieldset: [['Max', 'data-max'], ['Min', 'data-min']],
@@ -110,20 +103,75 @@ function setConstraints(element, fd) {
   }
 }
 
+function createLabel(fd, tagName = 'label') {
+  const label = document.createElement(tagName);
+  label.setAttribute('for', fd.Id);
+  label.className = 'field-label';
+  label.textContent = fd.Label || '';
+  label.setAttribute('itemprop', 'Label');
+  label.setAttribute('itemtype', 'text');
+  if (fd.Tooltip) {
+    label.title = fd.Tooltip;
+  }
+  return label;
+}
+
 function createHelpText(fd) {
   const div = document.createElement('div');
   div.className = 'field-description';
   div.setAttribute('aria-live', 'polite');
+  div.setAttribute('itemtype', 'text');
+  div.setAttribute('itemprop', 'Description');
   div.innerText = fd.Description;
   div.id = `${fd.Id}-description`;
   return div;
 }
 
+function generateItemId(id) {
+  if (id) {
+    return `urn:fnkconnection:${window.formPath}:default:Id:${id}`;
+  }
+  return `urn:fnkconnection:${window.formPath}:default`;
+}
+
+function createFieldWrapper(fd, tagName = 'div') {
+  const fieldWrapper = document.createElement(tagName);
+  fieldWrapper.setAttribute('itemtype', 'component');
+  fieldWrapper.setAttribute('itemid', generateItemId(fd.Id));
+  fieldWrapper.setAttribute('itemscope', '');
+  fieldWrapper.setAttribute('data-editor-itemlabel', fd.Label || fd.Name);
+  fieldWrapper.setAttribute('data-editor-itemmodel', fd.Type);
+  const nameStyle = fd.Name ? ` form-${fd.Name}` : '';
+  const fieldId = `form-${fd.Type}-wrapper${nameStyle}`;
+  fieldWrapper.className = fieldId;
+  if (fd.Fieldset) {
+    fieldWrapper.dataset.fieldset = fd.Fieldset;
+  }
+  if (fd.Mandatory.toLowerCase() === 'true') {
+    fieldWrapper.dataset.required = '';
+  }
+  if (fd.Hidden?.toLowerCase() === 'true') {
+    fieldWrapper.dataset.hidden = 'true';
+  }
+  fieldWrapper.classList.add('field-wrapper');
+  fieldWrapper.append(createLabel(fd));
+  return fieldWrapper;
+}
+
+function createButton(fd) {
+  const wrapper = createFieldWrapper(fd);
+  const button = document.createElement('button');
+  button.textContent = fd.Label;
+  button.type = fd.Type;
+  button.classList.add('button');
+  button.dataset.redirect = fd.Extra || '';
+  button.id = fd.Id;
+  button.name = fd.Name;
+  wrapper.replaceChildren(button);
+  return wrapper;
+}
 function createSubmit(fd) {
   const wrapper = createButton(fd);
-  const button = wrapper.querySelector('button');
-  button.id = '';
-  button.name = ''; // removing id and name from button otherwise form.submit() will not work
   return wrapper;
 }
 
@@ -156,20 +204,12 @@ const createSelect = withFieldWrapper((fd) => {
     ph.setAttribute('disabled', '');
     select.append(ph);
   }
-
-  const addOption = (label, value) => {
+  fd.Options.split(',').forEach((o) => {
     const option = document.createElement('option');
-    option.textContent = label?.trim();
-    option.value = value?.trim() || label?.trim();
-    if (fd.Value === option.value) {
-      option.setAttribute('selected', '');
-    }
+    option.textContent = o.trim();
+    option.value = o.trim();
     select.append(option);
-    return option;
-  };
-  const options = fd?.Options?.split(',') || [];
-  const optionsName = fd?.['Options Name'] ? fd?.['Options Name']?.split(',') : options;
-  options.forEach((value, index) => addOption(optionsName?.[index], value));
+  });
   return select;
 });
 
@@ -188,30 +228,9 @@ const createOutput = withFieldWrapper((fd) => {
     output.dataset.displayFormat = displayFormat;
   }
   const formatFn = formatFns[displayFormat] || ((x) => x);
-  output.dataset.value = fd.Value;
   output.innerText = formatFn(fd.Value);
   return output;
 });
-
-const currencySymbol = '$';
-function createCurrency(fd) {
-  const wrapper = createFieldWrapper(fd);
-  const widgetWrapper = document.createElement('div');
-  widgetWrapper.className = 'currency-input-wrapper';
-  const currencyEl = document.createElement('div');
-  currencyEl.className = 'currency-symbol';
-  currencyEl.innerText = currencySymbol; // todo :read from css
-  widgetWrapper.append(currencyEl);
-  const input = createInput({
-    ...fd,
-    Type: 'number',
-  });
-  input.dataset.displayFormat = 'currency';
-  input.dataset.type = 'currency';
-  widgetWrapper.append(input);
-  wrapper.append(widgetWrapper);
-  return wrapper;
-}
 
 function createHidden(fd) {
   const input = document.createElement('input');
@@ -226,23 +245,11 @@ function createLegend(fd) {
   return createLabel(fd, 'legend');
 }
 
-function createFragment(fd) {
-  const wrapper = createFieldWrapper(fd);
-  if (fd.Value?.startsWith('/') && fd.Value.includes('.html')) {
-    const url = fd.Value.replace('.html', '.plain.html');
-    fetch(url).then(async (resp) => {
-      if (resp.ok) {
-        wrapper.innerHTML = await resp.text();
-      }
-    });
-  }
-  return wrapper;
-}
-
 function createFieldSet(fd) {
   const wrapper = createFieldWrapper(fd, 'fieldset');
   wrapper.id = fd.Id;
   wrapper.name = fd.Name;
+  wrapper.setAttribute('itemtype', 'container');
   wrapper.replaceChildren(createLegend(fd));
   if (fd.Repeatable && fd.Repeatable.toLowerCase() === 'true') {
     setConstraints(wrapper, fd);
@@ -263,11 +270,11 @@ function groupFieldsByFieldSet(form) {
 
 function createPlainText(fd) {
   const paragraph = document.createElement('p');
+  const nameStyle = fd.Name ? `form-${fd.Name}` : '';
+  paragraph.className = nameStyle;
+  paragraph.dataset.fieldset = fd.Fieldset ? fd.Fieldset : '';
   paragraph.textContent = fd.Label;
-  const wrapper = createFieldWrapper(fd);
-  wrapper.id = fd.Id;
-  wrapper.replaceChildren(paragraph);
-  return wrapper;
+  return paragraph;
 }
 
 export const getId = (function getId() {
@@ -288,11 +295,9 @@ const fieldRenderers = {
   button: createButton,
   submit: createSubmit,
   output: createOutput,
-  currency: createCurrency,
   hidden: createHidden,
   fieldset: createFieldSet,
   plaintext: createPlainText,
-  fragment: createFragment,
 };
 
 function renderField(fd) {
@@ -310,13 +315,12 @@ function renderField(fd) {
   return field;
 }
 
-async function applyTransformation(formDef, form, block) {
+async function applyTransformation(formDef, form) {
   try {
-    // eslint-disable-next-line import/no-cycle
     const { requestTransformers, transformers } = await import('./decorators/index.js');
     if (transformers) {
       transformers.forEach(
-        (fn) => fn.call(this, formDef, form, block),
+        (fn) => fn.call(this, formDef, form),
       );
     }
 
@@ -348,11 +352,15 @@ async function fetchForm(pathname) {
   return jsonData;
 }
 
-export async function generateFormRendition(field, container) {
-  field.forEach((fd) => {
+async function createForm(formURL) {
+  const { pathname } = new URL(formURL);
+  window.formPath = pathname;
+  const data = await fetchForm(pathname);
+  const form = document.createElement('form');
+  data.forEach((fd) => {
     const el = renderField(fd);
     const input = el.querySelector('input,textarea,select');
-    if (fd.Mandatory === true || fd.Mandatory?.toLowerCase() === 'true') {
+    if (fd.Mandatory && fd.Mandatory.toLowerCase() === 'true') {
       input.setAttribute('required', 'required');
     }
     if (input) {
@@ -368,65 +376,48 @@ export async function generateFormRendition(field, container) {
         input.setAttribute('aria-describedby', `${fd.Id}-description`);
       }
     }
-    container.append(el);
+    form.append(el);
   });
-  groupFieldsByFieldSet(container);
-}
-
-function getFieldContainer(fieldElement) {
-  const wrapper = fieldElement?.closest('.field-wrapper');
-  let container = wrapper;
-  if ((fieldElement.type === 'radio' || fieldElement.type === 'checkbox') && wrapper.dataset.fieldset) {
-    container = fieldElement?.closest(`fieldset[name=${wrapper.dataset.fieldset}]`);
-  }
-  return container;
-}
-
-function updateorCreateInvalidMsg(fieldElement) {
-  const container = getFieldContainer(fieldElement);
-  let element = container.querySelector(':scope > .field-description');
-  if (!element) {
-    element = createHelpText({ Id: fieldElement.id });
-    element.classList.add('field-invalid');
-    container.append(element);
-  }
-  element.textContent = fieldElement.validationMessage;
-  return element;
-}
-
-async function createForm(formURL, block) {
-  const { pathname } = new URL(formURL);
-  const fields = await fetchForm(pathname);
-  const form = document.createElement('form');
-  form.noValidate = true;
-  await generateFormRendition(fields, form);
-  const transformRequest = await applyTransformation(fields, form, block);
+  groupFieldsByFieldSet(form);
+  const transformRequest = await applyTransformation(data, form);
   // eslint-disable-next-line prefer-destructuring
-  form.dataset.submit = pathname?.split('.json')[0];
-  form.querySelectorAll('input,textarea,select').forEach((el) => {
-    el.addEventListener('invalid', () => updateorCreateInvalidMsg(el));
-    el.addEventListener('change', () => updateorCreateInvalidMsg(el));
-  });
-  form.addEventListener('submit', async (e) => {
+  form.dataset.action = pathname?.split('.json')[0];
+  form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const valid = form.checkValidity();
-    if (valid) {
-      e.submitter.setAttribute('disabled', '');
-      handleSubmit(form, transformRequest);
-    } else {
-      form.querySelector(':invalid')?.focus();
-    }
+    e.submitter.setAttribute('disabled', '');
+    handleSubmit(form, transformRequest);
   });
   return form;
+}
+
+function loadUEScripts() {
+  const head = document.getElementsByTagName('head')[0];
+  const meta = document.createElement('meta');
+  meta.name = 'urn:auecon:fnkconnection';
+  meta.content = `fnk:${window.origin}`;
+  head.appendChild(meta);
+  const ueEmbedded = document.createElement('script');
+  ueEmbedded.src = 'https://cdn.jsdelivr.net/gh/adobe/universal-editor-cors/dist/universal-editor-embedded.js';
+  ueEmbedded.async = true;
+  head.appendChild(ueEmbedded);
+  const componentDefinition = document.createElement('script');
+  componentDefinition.type = 'application/vnd.adobe.aem.editor.component-definition+json';
+  componentDefinition.src = '/blocks/form/component-definition.json';
+  head.appendChild(componentDefinition);
 }
 
 export default async function decorate(block) {
   const formLink = block.querySelector('a[href$=".json"]');
   if (formLink) {
-    const form = await createForm(formLink.href, block);
+    loadUEScripts();
+    const form = await createForm(formLink.href);
+    form.setAttribute('itemid', generateItemId());
+    form.setAttribute('itemtype', 'container');
+    form.setAttribute('itemscope', '');
+    form.setAttribute('data-editor-itemlabel', 'Form Container');
     formLink.replaceWith(form);
 
-  //  const config = readBlockConfig(block);
-   // Object.entries(config).forEach(([key, value]) => { if (value) form.dataset[key] = value; });
+    const config = readBlockConfig(block);
+    Object.entries(config).forEach(([key, value]) => { if (value) form.dataset[key] = value; });
   }
 }
