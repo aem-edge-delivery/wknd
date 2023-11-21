@@ -11,9 +11,7 @@ const getId = (function getId() {
 function update(fieldset, index, labelTemplate) {
   const legend = fieldset.querySelector(':scope>.field-label').firstChild;
   const text = labelTemplate.replace('#', index + 1);
-  if (legend) {
-    legend.textContent = text;
-  }
+  legend.textContent = text;
   fieldset.id = getId(fieldset.name);
   fieldset.setAttribute('data-index', index);
   if (index > 0) {
@@ -46,7 +44,7 @@ function insertRemoveButton(fieldset, wrapper, form) {
   const removeButton = createButton('Remove', 'remove');
   removeButton.addEventListener('click', () => {
     fieldset.remove();
-    wrapper.querySelector('.item-add').setAttribute('data-visible', 'true');
+    wrapper.querySelector('.item-add').setAttribute('data-hidden', 'false');
     wrapper.querySelectorAll('[data-repeatable="true"]').forEach((el, index) => {
       update(el, index, wrapper['#repeat-template-label']);
     });
@@ -74,7 +72,7 @@ const add = (wrapper, form) => (e) => {
     insertRemoveButton(newFieldset, wrapper, form);
   }
   if (+max <= childCount + 1) {
-    e.currentTarget.setAttribute('data-visible', 'false');
+    e.currentTarget.setAttribute('data-hidden', 'true');
   }
   currentTarget.insertAdjacentElement('beforebegin', newFieldset);
   const event = new CustomEvent('item:add', {
